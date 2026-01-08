@@ -1,0 +1,7 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+# Only run lint-staged if there are staged changes in apps/web
+if git diff --cached --name-only --diff-filter=ACM | grep -q "^apps/web/"; then
+	cd apps/web && npx lint-staged
+fi
