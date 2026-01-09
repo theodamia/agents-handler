@@ -369,8 +369,16 @@ curl "http://localhost:8080/api/v1/metrics/overview?hours=24"
 
 ```bash
 cd apps/api/examples
+
+# Basic example
 ./agent-example.sh  # Send sample tool call events
+
+# Load testing
+./load-test.sh  # Simulate multiple concurrent agents
+./load-test-continuous.sh  # Continuous load at steady rate
 ```
+
+See `examples/README.md` for detailed load testing guide.
 
 ## Configuration
 

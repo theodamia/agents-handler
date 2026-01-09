@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Example script showing how agents can send tool call events to the Nous API
-# This demonstrates the Socket.IO integration - events will be broadcast to all connected clients
+# Events will be broadcast to all connected WebSocket clients in real-time
 
 API_URL="${API_URL:-http://localhost:8080/api/v1}"
 
@@ -80,9 +80,9 @@ curl -X POST "$API_URL/events" \
 
 echo ""
 echo "✅ Done! Check the dashboard at http://localhost:5173/observability"
-echo "   The dashboard should update automatically via Socket.IO!"
+echo "   The dashboard should update automatically via WebSocket!"
 echo ""
-echo "💡 To verify Socket.IO is working:"
+echo "💡 To verify WebSocket is working:"
 echo "   1. Open the dashboard in your browser"
 echo "   2. Check that 'Live' badge is green"
 echo "   3. Watch the dashboard update in real-time as events are sent"
