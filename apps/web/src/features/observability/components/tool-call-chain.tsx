@@ -37,10 +37,7 @@ export function ToolCallChainComponent({ chain }: ToolCallChainProps) {
 				<div className='space-y-4'>
 					<div className='flex items-center gap-2 overflow-x-auto pb-2'>
 						{chain.calls.map((call, index) => (
-							<div
-								key={call.id}
-								className='flex items-center gap-2 shrink-0'
-							>
+							<div key={call.id} className='flex items-center gap-2 shrink-0'>
 								<div className='flex flex-col items-center gap-2'>
 									<div
 										className={`flex items-center gap-2 px-3 py-2 rounded-lg border ${
@@ -81,7 +78,7 @@ export function ToolCallChainComponent({ chain }: ToolCallChainProps) {
 							<div
 								className='bg-blue-600 h-2 rounded-full transition-all'
 								style={{
-									width: `${(chain.totalDuration / maxDuration) * 100}%`,
+									width: `${Math.min((chain.totalDuration / maxDuration) * 100, 100)}%`,
 								}}
 							/>
 						</div>
