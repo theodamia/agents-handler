@@ -32,6 +32,7 @@ export interface FailureRateDataPoint {
 
 export interface ToolCall {
 	id: string;
+	requestId?: string;
 	tool: string;
 	duration: number;
 	timestamp: string;
