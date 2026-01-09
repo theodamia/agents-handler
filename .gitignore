@@ -5,6 +5,9 @@ bin/
 *.so
 *.dylib
 
+# Go compiled binaries
+apps/api/api
+
 # Dependencies
 node_modules/
 
