@@ -61,13 +61,89 @@ Server starting on port 8080
 
 ## API Endpoints
 
-### Health Check
+### Health Checks
+
+The API provides separate health check endpoints following Kubernetes best practices:
+
+#### Liveness Check
 
 ```bash
-GET /health
+GET /healthz
 ```
 
-Returns: `OK`
+**Purpose:** Verifies the application is running (doesn't check dependencies)
+
+**Response:** `200 OK` with plain text "OK"
+
+**Use case:** Kubernetes liveness probes, basic monitoring
+
+**Local access:**
+```bash
+# Using curl
+curl http://localhost:8080/healthz
+
+# Or open in browser
+open http://localhost:8080/healthz
+```
+
+#### Readiness Check
+
+```bash
+GET /readyz
+```
+
+**Purpose:** Verifies the application is ready to serve traffic (checks dependencies)
+
+**Response:**
+- `200 OK` with "OK" if ready
+- `503 Service Unavailable` with "NOT READY" if dependencies are down
+
+**Use case:** Kubernetes readiness probes, load balancers, webhooks
+
+**Local access:**
+
+**Plain text (default):**
+```bash
+curl http://localhost:8080/readyz
+# Returns: OK or NOT READY
+```
+
+**JSON format** (for monitoring systems):
+```bash
+curl -H "Accept: application/json" http://localhost:8080/readyz
+```
+
+**Response:**
+```json
+{
+  "status": "ready",
+  "timestamp": "2024-01-08T16:30:00Z",
+  "services": {
+    "database": {
+      "status": "connected"
+    },
+    "websocket": {
+      "status": "active",
+      "connections": 2
+    }
+  }
+}
+```
+
+**Quick test all endpoints:**
+```bash
+# Liveness (fast)
+curl http://localhost:8080/healthz
+
+# Readiness (checks dependencies)
+curl http://localhost:8080/readyz
+
+# Readiness with JSON
+curl -H "Accept: application/json" http://localhost:8080/readyz
+
+# WebSocket health check
+curl http://localhost:8080/ws/health
+```
 
 ### Agent Ingestion
 
@@ -107,6 +183,60 @@ The API includes a native WebSocket server for real-time updates.
 
 ```
 ws://localhost:8080/ws
+```
+
+### Health Check
+
+Check WebSocket hub status:
+
+```bash
+GET /ws/health
+```
+
+**Response:**
+```json
+{
+  "status": "active",
+  "connections": 2,
+  "endpoint": "/ws",
+  "protocol": "RFC 6455 (WebSocket)"
+}
+```
+
+**Local access:**
+```bash
+curl http://localhost:8080/ws/health
+```
+
+### Testing WebSocket Connection
+
+**Using wscat (recommended):**
+```bash
+# Install wscat
+npm install -g wscat
+
+# Connect to WebSocket
+wscat -c ws://localhost:8080/ws
+
+# You should see connection established
+# Messages will appear when events are sent to /api/v1/events
+```
+
+**Using browser console:**
+```javascript
+const ws = new WebSocket('ws://localhost:8080/ws');
+ws.onopen = () => console.log('Connected');
+ws.onmessage = (event) => console.log('Message:', JSON.parse(event.data));
+ws.onerror = (error) => console.error('Error:', error);
+ws.onclose = () => console.log('Disconnected');
+```
+
+**Using curl (check endpoint):**
+```bash
+# This will attempt WebSocket upgrade (may show upgrade response)
+curl -i -N -H "Connection: Upgrade" -H "Upgrade: websocket" \
+  -H "Sec-WebSocket-Version: 13" -H "Sec-WebSocket-Key: test" \
+  http://localhost:8080/ws
 ```
 
 ### Message Format
@@ -204,8 +334,20 @@ You can now browse tables, run queries, and view data visually!
 ### Quick Test
 
 ```bash
-# Health check
-curl http://localhost:8080/health
+# Liveness check (fast, no dependencies)
+curl http://localhost:8080/healthz
+
+# Readiness check (checks database and WebSocket)
+curl http://localhost:8080/readyz
+
+# Readiness check with JSON (for monitoring)
+curl -H "Accept: application/json" http://localhost:8080/readyz
+
+# WebSocket health check
+curl http://localhost:8080/ws/health
+
+# Test WebSocket connection (install wscat first: npm install -g wscat)
+# wscat -c ws://localhost:8080/ws
 
 # Send test event
 curl -X POST http://localhost:8080/api/v1/events \
@@ -253,6 +395,8 @@ apps/api/
 ├── cmd/api/          # Main entry point
 ├── internal/
 │   ├── api/handlers/ # HTTP handlers
+│   │   ├── handlers.go  # Business logic handlers (events, metrics)
+│   │   └── health.go   # Health check handlers (liveness, readiness)
 │   ├── database/     # Migration logic
 │   ├── models/       # Data models
 │   ├── repository/   # Database operations
@@ -264,6 +408,8 @@ apps/api/
 ### Key Components
 
 - **Handlers** (`internal/api/handlers/`) - HTTP request handlers
+  - `handlers.go` - Business logic handlers (events ingestion, metrics queries)
+  - `health.go` - Infrastructure handlers (health checks, WebSocket status)
 - **Repository** (`internal/repository/`) - Database operations
 - **WebSocket Hub** (`internal/websocket/`) - Real-time broadcasting
 - **Models** (`internal/models/`) - Data structures
@@ -311,10 +457,18 @@ export PORT=8081
 
 ### WebSocket Not Connecting
 
-1. Check backend is running: `curl http://localhost:8080/health`
-2. Check WebSocket endpoint: `curl http://localhost:8080/ws` (should upgrade to WebSocket)
-3. Verify CORS settings allow your origin
-4. Check backend logs for connection errors
+1. Check backend is running: `curl http://localhost:8080/healthz`
+2. Check readiness: `curl http://localhost:8080/readyz` (should return OK)
+3. Check WebSocket health: `curl http://localhost:8080/ws/health` (should show active status)
+4. Test WebSocket connection:
+   ```bash
+   # Install wscat: npm install -g wscat
+   wscat -c ws://localhost:8080/ws
+   ```
+5. Check WebSocket endpoint: `curl http://localhost:8080/ws` (should attempt WebSocket upgrade)
+6. Verify CORS settings allow your origin (`http://localhost:5173` or `http://localhost:3000`)
+7. Check backend logs for connection errors
+8. Verify frontend is connecting to correct WebSocket URL (`ws://localhost:8080/ws`)
 
 ### Dependencies Missing
 
