@@ -20,6 +20,11 @@ func New(db *pgxpool.Pool) *Repository {
 	return &Repository{db: db}
 }
 
+// Ping checks database connectivity
+func (r *Repository) Ping(ctx context.Context) error {
+	return r.db.Ping(ctx)
+}
+
 // IngestToolCall stores a tool call event in the database
 func (r *Repository) IngestToolCall(ctx context.Context, event models.ToolCallEvent) error {
 	requestID, err := uuid.Parse(event.RequestID)
