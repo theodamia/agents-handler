@@ -81,14 +81,13 @@ func main() {
 		MaxAge:           300,
 	}))
 
-	// Health check
-	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
-	})
+	// Health check endpoints (following Kubernetes best practices)
+	r.Get("/healthz", h.LivenessCheck) // Liveness: Is the app running?
+	r.Get("/readyz", h.ReadinessCheck) // Readiness: Is the app ready to serve traffic?
 
-	// WebSocket endpoint
-	r.Get("/ws", wsHub.ServeWS)
+	// WebSocket routes (more specific routes first)
+	r.Get("/ws/health", h.WebSocketHealthCheck) // WebSocket health check
+	r.Get("/ws", wsHub.ServeWS)                 // WebSocket endpoint
 
 	// API routes
 	r.Route("/api/v1", func(r chi.Router) {
