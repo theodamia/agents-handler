@@ -12,18 +12,18 @@ React frontend dashboard for visualizing observability data from AI agents.
 ### Setup
 
 1. **Install dependencies:**
-   ```bash
+```bash
    cd apps/web
-   npm install
-   ```
+npm install
+```
 
 2. **Start the development server:**
-   ```bash
+```bash
    npm run dev
-   ```
+```
 
    Or use the helper script:
-   ```bash
+```bash
    ./start-frontend.sh
    ```
 

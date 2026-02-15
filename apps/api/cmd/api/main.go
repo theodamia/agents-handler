@@ -127,6 +127,10 @@ func main() {
 	<-quit
 
 	log.Println("Shutting down server...")
+
+	// Gracefully shutdown WebSocket hub first
+	wsHub.Shutdown()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 

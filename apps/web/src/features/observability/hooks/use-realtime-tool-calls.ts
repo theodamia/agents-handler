@@ -1,6 +1,27 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useRef } from 'react';
+import { useThrottle } from '@uidotdev/usehooks';
+import {
+	startTransition,
+	useCallback,
+	useEffect,
+	useRef,
+	useState,
+} from 'react';
 import { useWebSocket } from '@/hooks/use-websocket';
+
+// Query keys to invalidate
+const QUERY_KEYS = [
+	'recent-tool-calls',
+	'tool-calls-metrics',
+	'metrics-overview',
+	'latency-metrics',
+	'token-usage-metrics',
+	'failure-rate-metrics',
+	'tool-call-chain',
+] as const;
+
+// Throttle delay (ms)
+const THROTTLE_DELAY_MS = 150;
 
 export function useRealtimeToolCalls() {
 	const queryClient = useQueryClient();
@@ -11,33 +32,44 @@ export function useRealtimeToolCalls() {
 		queryClientRef.current = queryClient;
 	}, [queryClient]);
 
+	// Batch invalidations to prevent excessive re-renders
+	const invalidateQueries = useCallback(() => {
+		startTransition(() => {
+			// Batch all invalidations together
+			QUERY_KEYS.forEach((queryKey) => {
+				queryClientRef.current.invalidateQueries({ queryKey: [queryKey] });
+			});
+		});
+	}, []);
+
+	// Use useThrottle to throttle invalidation trigger
+	const [invalidateTrigger, setInvalidateTrigger] = useState(0);
+	const throttledTrigger = useThrottle(invalidateTrigger, THROTTLE_DELAY_MS);
+
+	// Execute invalidation when throttled trigger changes
+	useEffect(() => {
+		if (throttledTrigger > 0) {
+			invalidateQueries();
+		}
+	}, [throttledTrigger, invalidateQueries]);
+
+	// Throttled invalidate function
+	const throttledInvalidate = useCallback(() => {
+		setInvalidateTrigger((prev) => prev + 1);
+	}, []);
+
 	const handleMessage = useCallback(
 		(message: { type: string; data: unknown }) => {
 			if (message.type === 'tool_call') {
-				// The WebSocket sends ToolCallEvent format (from ingestion)
-				// Invalidate queries to trigger refetch of latest data
-				// This ensures we get the complete tool call data from the database
-				queryClientRef.current.invalidateQueries({
-					queryKey: ['recent-tool-calls'],
-				});
-				queryClientRef.current.invalidateQueries({
-					queryKey: ['tool-calls-metrics'],
-				});
-				queryClientRef.current.invalidateQueries({
-					queryKey: ['metrics-overview'],
-				});
-				queryClientRef.current.invalidateQueries({
-					queryKey: ['latency-metrics'],
-				});
-				queryClientRef.current.invalidateQueries({
-					queryKey: ['token-usage-metrics'],
-				});
-				queryClientRef.current.invalidateQueries({
-					queryKey: ['failure-rate-metrics'],
-				});
+				throttledInvalidate();
+			} else if (message.type === 'batch') {
+				const batch = message.data as Array<{ type: string; data: unknown }>;
+				if (Array.isArray(batch) && batch.length > 0) {
+					throttledInvalidate();
+				}
 			}
 		},
-		[], // Empty deps - callback never changes
+		[throttledInvalidate],
 	);
 
 	const { isConnected, error } = useWebSocket(handleMessage);

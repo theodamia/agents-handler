@@ -75,6 +75,11 @@ type Hub struct {
 	// Unregister requests from clients
 	unregister chan *Client
 
+	// Batch buffer for high-frequency events
+	batchBuffer []Message
+	batchTimer  *time.Timer
+	batchMutex  sync.Mutex
+
 	mu sync.RWMutex
 }
 
@@ -84,17 +89,28 @@ type Message struct {
 	Data interface{} `json:"data"`
 }
 
+const (
+	// Batch window for high-frequency events (50ms)
+	batchWindow = 50 * time.Millisecond
+	// Maximum batch size before flushing
+	maxBatchSize = 10
+)
+
 // NewHub creates a new WebSocket hub
+// The broadcast channel is buffered to prevent blocking during high-frequency events
+// Buffer size of 256 is a reasonable default (can be tuned based on load)
 func NewHub() *Hub {
 	return &Hub{
-		clients:    make(map[*Client]bool),
-		broadcast:  make(chan []byte),
-		register:   make(chan *Client),
-		unregister: make(chan *Client),
+		clients:     make(map[*Client]bool),
+		broadcast:   make(chan []byte, 256), // Buffered channel to prevent blocking
+		register:    make(chan *Client),
+		unregister:  make(chan *Client),
+		batchBuffer: make([]Message, 0, maxBatchSize),
 	}
 }
 
 // Run starts the hub's main loop
+// This should be run in a separate goroutine
 func (h *Hub) Run() {
 	for {
 		select {
@@ -115,20 +131,97 @@ func (h *Hub) Run() {
 
 		case message := <-h.broadcast:
 			h.mu.RLock()
+			// Create a snapshot of clients to avoid holding lock during send
+			clients := make([]*Client, 0, len(h.clients))
 			for client := range h.clients {
+				clients = append(clients, client)
+			}
+			h.mu.RUnlock()
+
+			// Send to all clients without holding the lock
+			for _, client := range clients {
 				select {
 				case client.send <- message:
 				default:
-					close(client.send)
-					delete(h.clients, client)
+					// Client's send channel is full, disconnect them
+					h.mu.Lock()
+					if _, ok := h.clients[client]; ok {
+						delete(h.clients, client)
+						close(client.send)
+					}
+					h.mu.Unlock()
 				}
 			}
-			h.mu.RUnlock()
 		}
 	}
 }
 
+// Shutdown gracefully shuts down the hub, flushing any pending batches
+func (h *Hub) Shutdown() {
+	h.batchMutex.Lock()
+
+	// Stop timer if running
+	if h.batchTimer != nil {
+		h.batchTimer.Stop()
+		h.batchTimer = nil
+	}
+
+	// Flush any remaining batched messages
+	if len(h.batchBuffer) > 0 {
+		h.flushBatch() // flushBatch maintains the lock
+	}
+
+	h.batchMutex.Unlock()
+}
+
+// flushBatch sends all batched messages at once
+// Must be called with batchMutex already locked
+// The mutex remains locked after this function returns
+func (h *Hub) flushBatch() {
+	if len(h.batchBuffer) == 0 {
+		return
+	}
+
+	// Stop and clear timer before flushing
+	if h.batchTimer != nil {
+		h.batchTimer.Stop()
+		h.batchTimer = nil
+	}
+
+	// Copy buffer to avoid holding lock during channel send
+	buffer := make([]Message, len(h.batchBuffer))
+	copy(buffer, h.batchBuffer)
+	h.batchBuffer = h.batchBuffer[:0]
+
+	// Unlock before potentially blocking channel operation
+	h.batchMutex.Unlock()
+
+	// Send all batched messages as a single batch
+	batchMessage := Message{
+		Type: "batch",
+		Data: buffer,
+	}
+
+	jsonData, err := json.Marshal(batchMessage)
+	if err != nil {
+		log.Printf("Error marshaling batched WebSocket message: %v", err)
+		h.batchMutex.Lock()
+		return
+	}
+
+	select {
+	case h.broadcast <- jsonData:
+		// Success
+	default:
+		log.Printf("WebSocket broadcast channel full, dropping batch")
+	}
+
+	// Re-lock mutex before returning
+	h.batchMutex.Lock()
+}
+
 // BroadcastMessage sends a message to all connected clients
+// This is a non-blocking operation - if the channel is full, the message is dropped
 func (h *Hub) BroadcastMessage(eventType string, data interface{}) {
 	message := Message{
 		Type: eventType,
@@ -146,6 +239,41 @@ func (h *Hub) BroadcastMessage(eventType string, data interface{}) {
 	default:
 		log.Printf("WebSocket broadcast channel full, dropping message")
 	}
+}
+
+// BroadcastMessageBatched batches high-frequency events to reduce client load
+// Events are batched for 50ms or until batch size reaches maxBatchSize
+// This is thread-safe and non-blocking
+func (h *Hub) BroadcastMessageBatched(eventType string, data interface{}) {
+	h.batchMutex.Lock()
+
+	message := Message{
+		Type: eventType,
+		Data: data,
+	}
+
+	h.batchBuffer = append(h.batchBuffer, message)
+
+	// Flush if batch is full
+	if len(h.batchBuffer) >= maxBatchSize {
+		h.flushBatch() // flushBatch maintains the lock
+		h.batchMutex.Unlock()
+		return
+	}
+
+	// Start timer if this is the first message in the batch
+	if h.batchTimer == nil {
+		h.batchTimer = time.AfterFunc(batchWindow, func() {
+			h.batchMutex.Lock()
+			// Double-check timer is still valid (might have been flushed by size)
+			if h.batchTimer != nil {
+				h.flushBatch() // flushBatch maintains the lock
+			}
+			h.batchMutex.Unlock()
+		})
+	}
+
+	h.batchMutex.Unlock()
 }
 
 // GetClientCount returns the number of connected clients
