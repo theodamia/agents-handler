@@ -5,6 +5,7 @@ import {
 	FailureRateChart,
 	LatencyBreakdownChart,
 	MetricCard,
+	MultiAgentChains,
 	RecentToolCalls,
 	TokenUsageChart,
 	ToolCallChainComponent,
@@ -40,11 +41,8 @@ function ObservabilityPage() {
 	const { data: recentToolCalls = [] } = useRecentToolCalls(10);
 	const { data: metricsOverview } = useMetricsOverview(hours);
 
-	// Get first recent tool call's request ID for the chain demo
-	const firstRequestId =
-		recentToolCalls.length > 0 && recentToolCalls[0].requestId
-			? recentToolCalls[0].requestId
-			: null;
+	// Get first recent tool call's request ID to display its chain
+	const firstRequestId = recentToolCalls[0]?.requestId ?? null;
 	const { data: toolCallChain } = useToolCallChain(firstRequestId);
 
 	return (
@@ -124,7 +122,12 @@ function ObservabilityPage() {
 			</div>
 
 			{/* Tool Call Chain */}
-			{toolCallChain && <ToolCallChainComponent chain={toolCallChain} />}
+			<ToolCallChainComponent
+				chain={toolCallChain ?? null}
+				requestId={firstRequestId}
+			/>
+
+			<MultiAgentChains />
 
 			{/* Recent Tool Calls */}
 			<RecentToolCalls calls={recentToolCalls} />

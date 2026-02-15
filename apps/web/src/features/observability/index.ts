@@ -1,6 +1,7 @@
 export { FailureRateChart } from './components/failure-rate-chart';
 export { LatencyBreakdownChart } from './components/latency-breakdown-chart';
 export { MetricCard } from './components/metric-card';
+export { MultiAgentChains } from './components/multi-agent-chains';
 export { RecentToolCalls } from './components/recent-tool-calls';
 export { TokenUsageChart } from './components/token-usage-chart';
 export { ToolCallChainComponent } from './components/tool-call-chain';
