@@ -67,9 +67,10 @@ func (h *Handlers) IngestEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Broadcast event to WebSocket clients
+	// Broadcast event to WebSocket clients using batched mode for high-frequency events
+	// This reduces client-side load and prevents UI stuttering
 	if h.hub != nil {
-		h.hub.BroadcastMessage("tool_call", event)
+		h.hub.BroadcastMessageBatched("tool_call", event)
 	}
 
 	w.WriteHeader(http.StatusCreated)
